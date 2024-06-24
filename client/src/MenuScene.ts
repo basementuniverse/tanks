@@ -1,7 +1,10 @@
-import Game from './Game';
-import SceneManager, { Scene, SceneTransitionState } from '@basementuniverse/scene-manager';
-import { lerp } from '@basementuniverse/utils';
 import InputManager from '@basementuniverse/input-manager';
+import SceneManager, {
+  Scene,
+  SceneTransitionState,
+} from '@basementuniverse/scene-manager';
+import { lerp } from '@basementuniverse/utils';
+import Game from './Game';
 import { GameScene } from './GameScene';
 
 export class MenuScene extends Scene {

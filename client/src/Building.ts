@@ -8,10 +8,7 @@ import {
 export class Building {
   public building: Mesh;
 
-  public constructor(
-    public position: vec3,
-    public size: vec3
-  ) {
+  public constructor(public position: vec3, public size: vec3) {
     const buildingGeometry = new BoxGeometry(size.x, size.y, size.z);
     const buildingMaterial = new MeshStandardMaterial({ color: 0x998877 });
 

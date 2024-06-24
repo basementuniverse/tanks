@@ -1,10 +1,13 @@
-import { vec } from '@basementuniverse/vec';
-import Game from './Game';
-import SceneManager, { Scene, SceneTransitionState } from '@basementuniverse/scene-manager';
 import ContentManager from '@basementuniverse/content-manager';
-import * as constants from './constants';
+import SceneManager, {
+  Scene,
+  SceneTransitionState,
+} from '@basementuniverse/scene-manager';
+import { vec } from '@basementuniverse/vec';
 import * as content from '../content/content.json';
+import Game from './Game';
 import { IntroScene } from './IntroScene';
+import * as constants from './constants';
 
 export class LoadingScene extends Scene {
   private static readonly TRANSITION_TIME: number = 0.5;
@@ -31,15 +34,20 @@ export class LoadingScene extends Scene {
     this.progressBar = { position: vec(), progress: 0 };
     this.cooldownTime = LoadingScene.COOLDOWN_TIME;
 
-    ContentManager.load(content).then(() => {
-      this.finishedLoadingContent = true;
-    }).catch((error: string) => {
-      constants.DEBUG && console.log(`Unable to load content: ${error}`);
-    });
+    ContentManager.load(content)
+      .then(() => {
+        this.finishedLoadingContent = true;
+      })
+      .catch((error: string) => {
+        constants.DEBUG && console.log(`Unable to load content: ${error}`);
+      });
   }
 
   public update(dt: number) {
-    this.progressBar.position = vec.map(vec.mul(Game.screen, 1 / 2), Math.floor);
+    this.progressBar.position = vec.map(
+      vec.mul(Game.screen, 1 / 2),
+      Math.floor
+    );
     this.progressBar.progress = ContentManager.progress;
     if (this.finishedLoadingContent) {
       this.cooldownTime -= dt;

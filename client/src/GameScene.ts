@@ -1,26 +1,46 @@
-import Game from './Game';
-import SceneManager, { Scene, SceneTransitionState } from '@basementuniverse/scene-manager';
 import InputManager from '@basementuniverse/input-manager';
+import SceneManager, {
+  Scene,
+  SceneTransitionState,
+} from '@basementuniverse/scene-manager';
+import { Socket, io } from 'socket.io-client';
 import {
-  Scene as Scene3D,
-  Color,
-  WebGLRenderer,
   AmbientLight,
+  Color,
   DirectionalLight,
+  Scene as Scene3D,
+  WebGLRenderer,
   Vector3 as vec3,
 } from 'three';
-import { Tank } from './Tank';
-import { Map } from './Map';
 import { Camera } from './Camera';
-import { io, Socket } from 'socket.io-client';
+import Game from './Game';
+import { Map } from './Map';
+import { Opponent } from './Opponent';
+import { Player } from './Player';
+import { Tank } from './Tank';
 
-type PlayerState = {
+export type GameState = {
+  players: {
+    [id: string]: PlayerState;
+  };
+};
+
+export type PlayerState = {
   id: string;
   colour: string;
+  speed: number;
   positionX: number;
   positionZ: number;
   direction: number;
   turretDirection: number;
+};
+
+export type PlayerInputState = {
+  id: string;
+  thrust: number;
+  turn: number;
+  turretTurn: number;
+  shoot: boolean;
 };
 
 export class GameScene extends Scene {
@@ -28,9 +48,11 @@ export class GameScene extends Scene {
 
   private socket: Socket;
 
+  private joined: boolean = false;
+
   private scene: Scene3D;
 
-  private camera: Camera;
+  private camera: Camera | null = null;
 
   private renderer: WebGLRenderer;
 
@@ -40,7 +62,9 @@ export class GameScene extends Scene {
 
   private map: Map;
 
-  private player: Tank;
+  private player: Player | null = null;
+
+  private opponents: Opponent[] = [];
 
   public constructor() {
     super({
@@ -53,24 +77,93 @@ export class GameScene extends Scene {
     this.socket = io('http://localhost:3000/');
 
     this.socket.on('connect', () => {
+      console.log('Connected to server. Joining game...');
       this.socket.emit('join_game');
     });
 
-    // this.socket.on('joined', (state: PlayerState) => {
-    //   this.player = new Tank(
-    //     state.colour,
-    //     new vec3(state.positionX, 0, state.positionZ),
-    //     state.direction,
-    //     state.turretDirection
-    //   );
-    //   this.scene.add(this.player.tank);
+    this.socket.on(
+      'joined',
+      (gameState: GameState, playerState: PlayerState) => {
+        // Add player
+        this.player = new Player(
+          playerState.id,
+          new Tank(
+            playerState.colour,
+            new vec3(playerState.positionX, 0, playerState.positionZ),
+            playerState.direction,
+            playerState.turretDirection
+          )
+        );
+        this.scene.add(this.player.tank.tank);
 
-    //   this.camera = new Camera(this.player.tank, new vec3(0, 1, 10));
-    //   this.scene.add(this.camera.pivot);
-    // });
+        this.camera = new Camera(this.player.tank.tank);
+        this.scene.add(this.camera.pivot);
 
-    this.socket.on('update', (state: any) => {
-      console.log(state);
+        // Add opponents
+        for (const [id, state] of Object.entries(gameState.players)) {
+          if (id === this.socket.id) {
+            continue;
+          }
+
+          const opponent = new Opponent(
+            id,
+            new Tank(
+              state.colour,
+              new vec3(state.positionX, 0, state.positionZ),
+              state.direction,
+              state.turretDirection
+            )
+          );
+          this.opponents.push(opponent);
+          this.scene.add(opponent.tank.tank);
+        }
+
+        this.joined = true;
+      }
+    );
+
+    this.socket.on('update', (gameState: GameState) => {
+      if (!this.joined) {
+        return;
+      }
+
+      // Update player
+      if (this.player && gameState.players[this.socket.id ?? '']) {
+        this.player.onUpdate(gameState.players[this.socket.id ?? '']);
+      }
+
+      // Update opponents
+      for (const [id, state] of Object.entries(gameState.players)) {
+        if (id === this.socket.id) {
+          continue;
+        }
+
+        const found = this.opponents.find(opponent => opponent.id === id);
+        if (found) {
+          found.onUpdate(gameState.players[found.id]);
+        } else {
+          const opponent = new Opponent(
+            id,
+            new Tank(
+              state.colour,
+              new vec3(state.positionX, 0, state.positionZ),
+              state.direction,
+              state.turretDirection
+            )
+          );
+          this.opponents.push(opponent);
+          this.scene.add(opponent.tank.tank);
+        }
+      }
+
+      // Remove any opponents who don't exist any more
+      const opponentsToRemove = this.opponents.filter(
+        opponent => !Object.keys(gameState.players).includes(opponent.id)
+      );
+      for (const opponent of opponentsToRemove) {
+        this.scene.remove(opponent.tank.tank);
+        this.opponents.splice(this.opponents.indexOf(opponent), 1);
+      }
     });
 
     this.socket.on('disconnect', () => {
@@ -98,19 +191,9 @@ export class GameScene extends Scene {
     this.directionalLight.lookAt(0, 0, 0);
     this.scene.add(this.directionalLight);
 
+    // Initialise map
     this.map = new Map();
     this.map.setupScene(this.scene);
-
-    this.player = new Tank(
-      '#bf4f4f',
-      new vec3(0, 0, 0),
-      Math.PI,
-      0
-    );
-    this.scene.add(this.player.tank);
-
-    this.camera = new Camera(this.player.tank, new vec3(0, 1, 10));
-    this.scene.add(this.camera.pivot);
   }
 
   public update(dt: number) {
@@ -119,16 +202,17 @@ export class GameScene extends Scene {
       SceneManager.pop();
     }
 
-    this.player.update(dt, this.camera);
-    this.camera.update(dt);
+    if (this.joined && this.player && this.camera) {
+      this.player.update(this.camera);
+      this.camera.update();
 
-    // this.socket.emit('update', {
-    //   id: this.socket.id,
-    //   positionX: this.player.tank.position.x,
-    //   positionZ: this.player.tank.position.z,
-    //   direction: this.player.direction,
-    //   turretDirection: this.player.turretDirection,
-    // });
+      this.socket.emit('update', {
+        id: this.player.id,
+        thrust: this.player.thrust,
+        turn: this.player.turn,
+        turretTurn: this.player.turretTurn,
+      } as PlayerInputState);
+    }
   }
 
   public draw(context: CanvasRenderingContext2D) {
@@ -137,21 +221,25 @@ export class GameScene extends Scene {
       context.globalAlpha = this.transitionAmount;
     }
 
-    this.renderer.render(this.scene, this.camera.camera);
+    if (this.joined && this.player && this.camera) {
+      this.renderer.render(this.scene, this.camera.camera);
 
-    context.drawImage(
-      this.renderer.domElement,
-      0,
-      0,
-      Game.screen.x,
-      Game.screen.y
-    );
+      context.drawImage(
+        this.renderer.domElement,
+        0,
+        0,
+        Game.screen.x,
+        Game.screen.y
+      );
+    }
 
     context.restore();
   }
 
   public resize(width: number, height: number) {
-    this.camera.resize(width, height);
+    if (this.camera) {
+      this.camera.resize(width, height);
+    }
     this.renderer.setSize(width, height);
   }
 }

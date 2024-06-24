@@ -1,8 +1,8 @@
-import { vec } from '@basementuniverse/vec';
 import ContentManager from '@basementuniverse/content-manager';
 import Debug from '@basementuniverse/debug';
 import InputManager from '@basementuniverse/input-manager';
 import SceneManager from '@basementuniverse/scene-manager';
+import { vec } from '@basementuniverse/vec';
 import { LoadingScene } from './LoadingScene';
 import * as config from './config.json';
 import * as constants from './constants';
@@ -96,7 +96,7 @@ export default class Game {
     Game.screen = vec(Game.canvas.width, Game.canvas.height);
 
     SceneManager.update(dt);
-    InputManager.update();  // Input manager should be updated last
+    InputManager.update(); // Input manager should be updated last
   }
 
   draw() {

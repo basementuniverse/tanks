@@ -1,4 +1,5 @@
 import ContentManager from '@basementuniverse/content-manager';
+import InputManager from '@basementuniverse/input-manager';
 import SceneManager, {
   Scene,
   SceneTransitionState,
@@ -6,7 +7,6 @@ import SceneManager, {
 import { vec } from '@basementuniverse/vec';
 import Game from './Game';
 import { MenuScene } from './MenuScene';
-import InputManager from '@basementuniverse/input-manager';
 
 export class IntroScene extends Scene {
   private static readonly TRANSITION_TIME: number = 2;

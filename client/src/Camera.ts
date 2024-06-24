@@ -1,12 +1,8 @@
-import {
-  Object3D,
-  PerspectiveCamera,
-  Vector3 as vec3,
-} from 'three';
-import Game from './Game';
 import InputManager from '@basementuniverse/input-manager';
-import { vec as vec2 } from '@basementuniverse/vec';
 import { clamp } from '@basementuniverse/utils';
+import { vec as vec2 } from '@basementuniverse/vec';
+import { Object3D, PerspectiveCamera, Vector3 as vec3 } from 'three';
+import Game from './Game';
 
 export class Camera {
   private static readonly YAW_SPEED: number = 0.008;
@@ -35,13 +31,10 @@ export class Camera {
 
   private previousMousePosition: vec2 = vec2();
 
-  public constructor(
-    public followTarget: Object3D,
-    private initialOffset: vec3
-  ) {
+  public constructor(public followTarget: Object3D) {
     const aspectRatio = Game.screen.x / Game.screen.y;
     this.camera = new PerspectiveCamera(50, aspectRatio, 1, 1000);
-    this.camera.rotation.order = "YXZ";
+    this.camera.rotation.order = 'YXZ';
     this.camera.position.set(0, 10, 50);
 
     this.pivot = new Object3D();
@@ -58,12 +51,10 @@ export class Camera {
     this.yaw.add(this.pitch);
     this.pitch.add(this.camera);
 
-    this.previousMousePosition = vec2.cpy(
-      InputManager.mousePosition
-    );
+    this.previousMousePosition = vec2.cpy(InputManager.mousePosition);
   }
 
-  public update(dt: number) {
+  public update() {
     const mouseDelta = vec2.sub(
       this.previousMousePosition,
       InputManager.mousePosition
