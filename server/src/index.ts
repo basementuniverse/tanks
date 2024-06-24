@@ -1,4 +1,5 @@
 import { clamp } from '@basementuniverse/utils';
+import { Box, System as CollisionSystem } from 'detect-collisions';
 import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
 
@@ -15,15 +16,103 @@ const PLAYER_COLOURS = [
   '#35cc8b',
 ];
 
-const ACCELERATION: number = 9;
+const ACCELERATION: number = 14;
 
-const ROLLING_FRICTION: number = 0.25;
+const ROLLING_FRICTION: number = 0.03;
 
-const MAX_SPEED: number = 30;
+const MAX_SPEED: number = 40;
 
-const TURN_SPEED: number = 1.2;
+const TURN_SPEED: number = 1.3;
 
 const TURRET_TURN_SPEED: number = 1;
+
+const TANK_SX = 10;
+
+const TANK_SZ = 15;
+
+const MAP_LAYOUT = {
+  sx: 1024,
+  sz: 1024,
+  buildings: [
+    {
+      x: 289,
+      z: 164,
+      sx: 50,
+      sy: 40,
+      sz: 84,
+    },
+    {
+      x: 409,
+      z: 160,
+      sx: 40,
+      sy: 20,
+      sz: 68,
+    },
+    {
+      x: 554,
+      z: 153,
+      sx: 130,
+      sy: 30,
+      sz: 86,
+    },
+    {
+      x: 542,
+      z: 441,
+      sx: 57,
+      sy: 50,
+      sz: 62,
+    },
+    {
+      x: 182,
+      z: 564,
+      sx: 52,
+      sy: 30,
+      sz: 74,
+    },
+    {
+      x: 543,
+      z: 600,
+      sx: 101,
+      sy: 40,
+      sz: 103,
+    },
+    {
+      x: 730,
+      z: 552,
+      sx: 63,
+      sy: 20,
+      sz: 120,
+    },
+    {
+      x: 856,
+      z: 583,
+      sx: 113,
+      sy: 20,
+      sz: 56,
+    },
+    {
+      x: 604,
+      z: 730,
+      sx: 44,
+      sy: 15,
+      sz: 44,
+    },
+    {
+      x: 228,
+      z: 865,
+      sx: 110,
+      sy: 40,
+      sz: 62,
+    },
+    {
+      x: 785,
+      z: 916,
+      sx: 127,
+      sy: 30,
+      sz: 108,
+    },
+  ],
+};
 
 type GameState = {
   players: {
@@ -53,6 +142,10 @@ const players: {
   [id: string]: PlayerState;
 } = {};
 
+const playerCollisionVolumes: {
+  [id: string]: Box;
+} = {};
+
 const inputQueue: PlayerInputState[] = [];
 
 let gameLoop: NodeJS.Timeout | null = null;
@@ -65,6 +158,46 @@ const io = new Server(httpServer, {
   },
 });
 
+const collisionSystem = new CollisionSystem();
+
+// Add map bounds
+collisionSystem.createLine(
+  { x: -MAP_LAYOUT.sx / 2, y: -MAP_LAYOUT.sz / 2 },
+  { x: MAP_LAYOUT.sx / 2, y: -MAP_LAYOUT.sz / 2 },
+  { isStatic: true }
+);
+collisionSystem.createLine(
+  { x: MAP_LAYOUT.sx / 2, y: -MAP_LAYOUT.sz / 2 },
+  { x: MAP_LAYOUT.sx / 2, y: MAP_LAYOUT.sz / 2 },
+  { isStatic: true }
+);
+collisionSystem.createLine(
+  { x: MAP_LAYOUT.sx / 2, y: MAP_LAYOUT.sz / 2 },
+  { x: -MAP_LAYOUT.sx / 2, y: MAP_LAYOUT.sz / 2 },
+  { isStatic: true }
+);
+collisionSystem.createLine(
+  { x: -MAP_LAYOUT.sx / 2, y: MAP_LAYOUT.sz / 2 },
+  { x: -MAP_LAYOUT.sx / 2, y: -MAP_LAYOUT.sz / 2 },
+  { isStatic: true }
+);
+
+// Add OBB collision volumes for buildings
+for (const building of MAP_LAYOUT.buildings) {
+  collisionSystem.createBox(
+    {
+      x: building.x - MAP_LAYOUT.sx / 2,
+      y: building.z - MAP_LAYOUT.sz / 2,
+    },
+    building.sx,
+    building.sz,
+    {
+      isStatic: true,
+      isCentered: true,
+    }
+  );
+}
+
 io.on('connection', (socket: Socket) => {
   // Player joins the game
   socket.on('join_game', () => {
@@ -73,7 +206,7 @@ io.on('connection', (socket: Socket) => {
     const colour =
       PLAYER_COLOURS[Object.keys(players).length % PLAYER_COLOURS.length];
 
-    // If the gameloop isn't already running, start it now
+    // If the game loop isn't already running, start it now
     if (gameLoop === null) {
       gameLoop = setInterval(() => {
         update();
@@ -90,6 +223,14 @@ io.on('connection', (socket: Socket) => {
       direction: Math.PI,
       turretDirection: 0,
     };
+    playerCollisionVolumes[socket.id] = collisionSystem.createBox(
+      { x: 0, y: 0 },
+      TANK_SX,
+      TANK_SZ,
+      { isCentered: true }
+    );
+    playerCollisionVolumes[socket.id].setAngle(players[socket.id].direction);
+    collisionSystem.update();
 
     // Inform the joining player that they have joined
     socket.emit(
@@ -107,8 +248,11 @@ io.on('connection', (socket: Socket) => {
 
     // Remove the player
     delete players[socket.id];
+    collisionSystem.remove(playerCollisionVolumes[socket.id]);
+    collisionSystem.update();
+    delete playerCollisionVolumes[socket.id];
 
-    // If there are no players, stop the gameloop
+    // If there are no players, stop the game loop
     if (Object.keys(players).length === 0) {
       clearInterval(gameLoop as NodeJS.Timeout);
       gameLoop = null;
@@ -132,11 +276,22 @@ function update() {
       continue;
     }
 
-    players[input.id] = updatePlayer(
-      1 / TICK_RATE,
-      players[input.id],
-      input
+    players[input.id] = updatePlayer(1 / TICK_RATE, players[input.id], input);
+    playerCollisionVolumes[input.id].setPosition(
+      players[input.id].positionX,
+      players[input.id].positionZ
     );
+    playerCollisionVolumes[input.id].setAngle(players[input.id].direction);
+  }
+
+  collisionSystem.update();
+  collisionSystem.separate();
+
+  // Constrain player positions based on collision separation
+  for (const [id, collisionVolume] of Object.entries(playerCollisionVolumes)) {
+    players[id].positionX = collisionVolume.x;
+    players[id].positionZ = collisionVolume.y;
+    players[id].direction = collisionVolume.angle;
   }
 
   io.emit('update', { players } as GameState);
@@ -154,7 +309,7 @@ function updatePlayer(
   );
 
   if (input.thrust === 0) {
-    speed *= 1 - ROLLING_FRICTION * dt;
+    speed *= 1 - ROLLING_FRICTION;
   }
 
   if (Math.abs(speed) < 0.1) {
