@@ -1,0 +1,10 @@
+/.vscode
+/resources
+
+# Server
+/server/build
+/server/node_modules
+
+# Client
+/client/build
+/client/node_modules

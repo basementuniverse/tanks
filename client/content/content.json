@@ -1,0 +1,37 @@
+[
+  {
+    "name": "basement-universe",
+    "type": "image",
+    "args": ["build/content/basement-universe.png"]
+  },
+  {
+    "name": "tank-mesh",
+    "type": "text",
+    "args": ["http://localhost:8080/build/content/tank.obj"]
+  },
+  {
+    "name": "map-layout",
+    "type": "json",
+    "args": ["http://localhost:8080/build/content/map-layout.json"]
+  },
+  {
+    "name": "map-ground",
+    "type": "image",
+    "args": ["build/content/map-ground.png"]
+  },
+  {
+    "name": "skybox-top",
+    "type": "image",
+    "args": ["build/content/skybox-top.png"]
+  },
+  {
+    "name": "skybox-bottom",
+    "type": "image",
+    "args": ["build/content/skybox-bottom.png"]
+  },
+  {
+    "name": "skybox-side",
+    "type": "image",
+    "args": ["build/content/skybox-side.png"]
+  }
+]

@@ -1,0 +1,26 @@
+{
+  "name": "tanks-server",
+  "version": "1.0.0",
+  "description": "",
+  "author": "Gordon Larrigan <gordonlarrigan@gmail.com> (https://gordonlarrigan.com)",
+  "license": "MIT",
+  "scripts": {
+    "empty": "rm -rf build/*",
+    "build": "npx tsc",
+    "watch": "concurrently \"npx tsc --watch\" \"nodemon -q build/index.js\"",
+    "start": "node build/index.js"
+  },
+  "dependencies": {
+    "@basementuniverse/async": "^1.0.0",
+    "@basementuniverse/utils": "^1.1.0",
+    "socket.io": "^4.7.5",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/socket.io": "^3.0.2",
+    "@types/uuid": "^9.0.6",
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.0.1",
+    "typescript": "^5.2.2"
+  }
+}
