@@ -11,7 +11,15 @@ export class Player {
 
   public turretTurn: number = 0;
 
-  constructor(public id: string, public tank: Tank) {}
+  public shoot: boolean = false;
+
+  public health: number = 100;
+
+  constructor(
+    public id: string,
+    public name: string,
+    public tank: Tank
+  ) {}
 
   public update(camera: Camera) {
     // Turret control
@@ -54,9 +62,14 @@ export class Player {
     if (InputManager.keyDown('KeyD') && !InputManager.keyDown('KeyA')) {
       this.turn = -1;
     }
+
+    // Fire control
+    this.shoot = InputManager.mousePressed();
   }
 
   public onUpdate(state: PlayerState) {
+    this.health = state.health;
+    
     this.tank.onUpdate(
       new vec3(state.positionX, 0, state.positionZ),
       state.direction,

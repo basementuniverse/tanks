@@ -1,4 +1,9 @@
 {
   "title": "Tanks!",
-  "showFPS": true
+  "showFPS": true,
+  "env": "development",
+  "server": {
+    "development": "http://localhost:3000",
+    "production": "http://3.94.73.225:3000"
+  }
 }

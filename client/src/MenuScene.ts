@@ -10,17 +10,21 @@ import { GameScene } from './GameScene';
 export class MenuScene extends Scene {
   private static readonly TRANSITION_TIME: number = 1;
 
+  private name: string = 'Anonymous';
+
   public constructor() {
     super({
       transitionTime: MenuScene.TRANSITION_TIME,
     });
   }
 
-  public initialise() {}
+  public initialise() {
+    this.name = prompt('Enter your name:', this.name) || this.name;
+  }
 
   public update(dt: number) {
-    if (InputManager.keyPressed()) {
-      SceneManager.push(new GameScene());
+    if (InputManager.keyPressed() || InputManager.mousePressed()) {
+      SceneManager.push(new GameScene(), this.name);
     }
   }
 

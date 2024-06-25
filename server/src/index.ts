@@ -3,6 +3,8 @@ import { Box, System as CollisionSystem } from 'detect-collisions';
 import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
 
+const ENV = 'development';
+
 const TICK_RATE = 60;
 
 const PLAYER_COLOURS = [
@@ -25,6 +27,8 @@ const MAX_SPEED: number = 40;
 const TURN_SPEED: number = 1.3;
 
 const TURRET_TURN_SPEED: number = 1;
+
+const FIRE_COOLDOWN = 1;
 
 const TANK_SX = 10;
 
@@ -118,16 +122,21 @@ type GameState = {
   players: {
     [id: string]: PlayerState;
   };
+  fireTrails?: FireTrailState[];
+  explosions?: ExplosionState[];
 };
 
 type PlayerState = {
   id: string;
+  name: string;
   colour: string;
   speed: number;
+  health: number;
   positionX: number;
   positionZ: number;
   direction: number;
   turretDirection: number;
+  shootCooldown: number;
 };
 
 type PlayerInputState = {
@@ -138,6 +147,20 @@ type PlayerInputState = {
   shoot?: boolean;
 };
 
+type FireTrailState = {
+  startX: number;
+  startZ: number;
+  endX: number;
+  endZ: number;
+  fade: number;
+};
+
+type ExplosionState = {
+  positionX: number;
+  positionZ: number;
+  fade: number;
+};
+
 const players: {
   [id: string]: PlayerState;
 } = {};
@@ -146,6 +169,10 @@ const playerCollisionVolumes: {
   [id: string]: Box;
 } = {};
 
+const fireTrails: FireTrailState[] = [];
+
+const explosions: ExplosionState[] = [];
+
 const inputQueue: PlayerInputState[] = [];
 
 let gameLoop: NodeJS.Timeout | null = null;
@@ -153,7 +180,10 @@ let gameLoop: NodeJS.Timeout | null = null;
 const httpServer = createServer();
 const io = new Server(httpServer, {
   cors: {
-    origin: 'http://localhost:8080',
+    origin: {
+      development: 'http://localhost:8080',
+      production: 'http://tanks.basementuniverse.com',
+    }[ENV],
     methods: ['GET', 'POST'],
   },
 });
@@ -200,7 +230,7 @@ for (const building of MAP_LAYOUT.buildings) {
 
 io.on('connection', (socket: Socket) => {
   // Player joins the game
-  socket.on('join_game', () => {
+  socket.on('join_game', (name: string) => {
     console.log(`Player ${socket.id} joined the game`);
 
     const colour =
@@ -216,12 +246,15 @@ io.on('connection', (socket: Socket) => {
     // Add a new player
     players[socket.id] = {
       id: socket.id,
+      name,
       colour,
       speed: 0,
+      health: 100,
       positionX: 0,
       positionZ: 0,
       direction: Math.PI,
       turretDirection: 0,
+      shootCooldown: 0,
     };
     playerCollisionVolumes[socket.id] = collisionSystem.createBox(
       { x: 0, y: 0 },
@@ -247,10 +280,12 @@ io.on('connection', (socket: Socket) => {
     console.log(`Player ${socket.id} left the game`);
 
     // Remove the player
-    delete players[socket.id];
-    collisionSystem.remove(playerCollisionVolumes[socket.id]);
-    collisionSystem.update();
-    delete playerCollisionVolumes[socket.id];
+    try {
+      delete players[socket.id];
+      collisionSystem.remove(playerCollisionVolumes[socket.id]);
+      collisionSystem.update();
+      delete playerCollisionVolumes[socket.id];
+    } catch (e) {}
 
     // If there are no players, stop the game loop
     if (Object.keys(players).length === 0) {
@@ -294,7 +329,7 @@ function update() {
     players[id].direction = collisionVolume.angle;
   }
 
-  io.emit('update', { players } as GameState);
+  io.emit('update', { players, fireTrails, explosions } as GameState);
 }
 
 function updatePlayer(
@@ -322,6 +357,47 @@ function updatePlayer(
   const direction = player.direction + input.turn * TURN_SPEED * dt;
   const turretDirection =
     player.turretDirection + input.turretTurn * TURRET_TURN_SPEED * dt;
+
+  if (input.shoot && player.shootCooldown <= 0) {
+    player.shootCooldown = FIRE_COOLDOWN;
+
+    const turretWorldDirection = player.direction + player.turretDirection;
+    const start = {
+      x: player.positionX + Math.sin(turretWorldDirection) * 20,
+      y: player.positionZ + Math.cos(turretWorldDirection) * 20,
+    };
+    const end = {
+      x: start.x + Math.sin(turretWorldDirection) * 1024,
+      y: start.y + Math.cos(turretWorldDirection) * 1024,
+    };
+
+    const hit = collisionSystem.raycast(start, end);
+    if (hit) {
+      const { point, body } = hit;
+
+      const hitOpponent = Object.values(players).find(
+        player => player.positionX === body.x && player.positionZ === body.y
+      );
+      if (hitOpponent) {
+        console.log(`Player ${player.name} shot player ${hitOpponent.name}`);
+
+        hitOpponent.health -= 10;
+        if (hitOpponent.health <= 0) {
+          try {
+            delete players[hitOpponent.id];
+            collisionSystem.remove(playerCollisionVolumes[hitOpponent.id]);
+            delete playerCollisionVolumes[hitOpponent.id];
+          } catch (e) {}
+
+          io.emit('player_died', hitOpponent.id);
+        }
+      }
+    }
+  }
+
+  if (player.shootCooldown > 0) {
+    player.shootCooldown -= dt;
+  }
 
   return {
     ...player,
