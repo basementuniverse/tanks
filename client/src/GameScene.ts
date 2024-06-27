@@ -1,31 +1,37 @@
+import Debug from '@basementuniverse/debug';
 import InputManager from '@basementuniverse/input-manager';
 import SceneManager, {
   Scene,
   SceneTransitionState,
 } from '@basementuniverse/scene-manager';
+import { lerp } from '@basementuniverse/utils';
 import { vec as vec2 } from '@basementuniverse/vec';
 import { Socket, io } from 'socket.io-client';
 import {
   AmbientLight,
   Color,
   DirectionalLight,
+  Material,
   Scene as Scene3D,
   WebGLRenderer,
   Vector3 as vec3,
 } from 'three';
 import { Camera } from './Camera';
+import { Explosion } from './Explosion';
+import { FireTrail } from './FireTrail';
 import Game from './Game';
 import { Map } from './Map';
 import { Opponent } from './Opponent';
 import { Player } from './Player';
 import { Tank } from './Tank';
 import * as config from './config.json';
-import Debug from '@basementuniverse/debug';
 
 export type GameState = {
   players: {
     [id: string]: PlayerState;
   };
+  fireTrails: FireTrailState[];
+  explosions: ExplosionState[];
 };
 
 export type PlayerState = {
@@ -47,6 +53,22 @@ export type PlayerInputState = {
   turn: number;
   turretTurn: number;
   shoot: boolean;
+};
+
+export type FireTrailState = {
+  id: string;
+  startX: number;
+  startZ: number;
+  endX: number;
+  endZ: number;
+  fade: number;
+};
+
+export type ExplosionState = {
+  id: string;
+  positionX: number;
+  positionZ: number;
+  fade: number;
 };
 
 export class GameScene extends Scene {
@@ -79,6 +101,10 @@ export class GameScene extends Scene {
   private player: Player | null = null;
 
   private opponents: Opponent[] = [];
+
+  private fireTrails: FireTrail[] = [];
+
+  private explosions: Explosion[] = [];
 
   public constructor() {
     super({
@@ -181,6 +207,68 @@ export class GameScene extends Scene {
         this.scene.remove(opponent.tank.tank);
         this.opponents.splice(this.opponents.indexOf(opponent), 1);
       }
+
+      // Update fire trails
+      for (const fireTrailState of gameState.fireTrails) {
+        const found = this.fireTrails.find(f => f.id === fireTrailState.id);
+        if (found !== undefined) {
+          const material = found.line.material as Material;
+          material.opacity = lerp(fireTrailState.fade, 0.5, 0);
+        } else {
+          const start = new vec3(
+            fireTrailState.startX,
+            FireTrail.FIRE_TRAIL_Y,
+            fireTrailState.startZ
+          );
+          const end = new vec3(
+            fireTrailState.endX,
+            FireTrail.FIRE_TRAIL_Y,
+            fireTrailState.endZ
+          );
+          const fireTrail = new FireTrail(fireTrailState.id, start, end);
+          this.fireTrails.push(fireTrail);
+          this.scene.add(fireTrail.line);
+        }
+      }
+
+      // Remove any fire trails that don't exist any more
+      for (const fireTrail of this.fireTrails) {
+        if (
+          gameState.fireTrails.find(f => f.id === fireTrail.id) === undefined
+        ) {
+          this.scene.remove(fireTrail.line);
+          this.fireTrails.splice(this.fireTrails.indexOf(fireTrail), 1);
+        }
+      }
+
+      // Update explosions
+      for (const explosionState of gameState.explosions) {
+        const found = this.explosions.find(e => e.id === explosionState.id);
+        if (found !== undefined) {
+          const material = found.explosion.material as Material;
+          material.opacity = explosionState.fade;
+          found.explosion.scale.setScalar(lerp(explosionState.fade, 1, 2));
+        } else {
+          const position = new vec3(
+            explosionState.positionX,
+            0,
+            explosionState.positionZ
+          );
+          const explosion = new Explosion(explosionState.id, position);
+          this.explosions.push(explosion);
+          this.scene.add(explosion.explosion);
+        }
+      }
+
+      // Remove any explosions that don't exist any more
+      for (const explosion of this.explosions) {
+        if (
+          gameState.explosions.find(e => e.id === explosion.id) === undefined
+        ) {
+          this.scene.remove(explosion.explosion);
+          this.explosions.splice(this.explosions.indexOf(explosion), 1);
+        }
+      }
     });
 
     this.socket.on('player_died', (id: string) => {
@@ -249,12 +337,6 @@ export class GameScene extends Scene {
         shoot: this.player.shoot,
       } as PlayerInputState);
     }
-
-    // if (this.dead && InputManager.keyPressed()) {
-    //   this.socket.disconnect();
-    //   SceneManager.pop();
-    //   SceneManager.push(new GameScene(), this.player?.name ?? 'Anonymous');
-    // }
   }
 
   public draw(context: CanvasRenderingContext2D) {

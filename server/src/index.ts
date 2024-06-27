@@ -2,6 +2,7 @@ import { clamp } from '@basementuniverse/utils';
 import { Box, System as CollisionSystem } from 'detect-collisions';
 import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
+import { v4 as uuid } from 'uuid';
 
 const ENV = 'development';
 
@@ -28,7 +29,7 @@ const TURN_SPEED: number = 1.3;
 
 const TURRET_TURN_SPEED: number = 1;
 
-const FIRE_COOLDOWN = 1;
+const FIRE_COOLDOWN = 0.5;
 
 const TANK_SX = 10;
 
@@ -122,8 +123,8 @@ type GameState = {
   players: {
     [id: string]: PlayerState;
   };
-  fireTrails?: FireTrailState[];
-  explosions?: ExplosionState[];
+  fireTrails: FireTrailState[];
+  explosions: ExplosionState[];
 };
 
 type PlayerState = {
@@ -148,6 +149,7 @@ type PlayerInputState = {
 };
 
 type FireTrailState = {
+  id: string;
   startX: number;
   startZ: number;
   endX: number;
@@ -156,6 +158,7 @@ type FireTrailState = {
 };
 
 type ExplosionState = {
+  id: string;
   positionX: number;
   positionZ: number;
   fade: number;
@@ -169,9 +172,9 @@ const playerCollisionVolumes: {
   [id: string]: Box;
 } = {};
 
-const fireTrails: FireTrailState[] = [];
+let fireTrails: FireTrailState[] = [];
 
-const explosions: ExplosionState[] = [];
+let explosions: ExplosionState[] = [];
 
 const inputQueue: PlayerInputState[] = [];
 
@@ -329,6 +332,18 @@ function update() {
     players[id].direction = collisionVolume.angle;
   }
 
+  // Fade out all fire trails
+  for (const fireTrail of fireTrails) {
+    fireTrail.fade -= 1 / TICK_RATE;
+  }
+  fireTrails = fireTrails.filter(fireTrail => fireTrail.fade > 0);
+
+  // Fade out all explosions
+  for (const explosion of explosions) {
+    explosion.fade -= (1 / TICK_RATE) * 3;
+  }
+  explosions = explosions.filter(explosion => explosion.fade > 0);
+
   io.emit('update', { players, fireTrails, explosions } as GameState);
 }
 
@@ -363,8 +378,8 @@ function updatePlayer(
 
     const turretWorldDirection = player.direction + player.turretDirection;
     const start = {
-      x: player.positionX + Math.sin(turretWorldDirection) * 20,
-      y: player.positionZ + Math.cos(turretWorldDirection) * 20,
+      x: player.positionX + Math.sin(turretWorldDirection) * 12,
+      y: player.positionZ + Math.cos(turretWorldDirection) * 12,
     };
     const end = {
       x: start.x + Math.sin(turretWorldDirection) * 1024,
@@ -374,6 +389,15 @@ function updatePlayer(
     const hit = collisionSystem.raycast(start, end);
     if (hit) {
       const { point, body } = hit;
+
+      fireTrails.push({
+        id: uuid(),
+        startX: start.x,
+        startZ: start.y,
+        endX: point.x,
+        endZ: point.y,
+        fade: 1,
+      });
 
       const hitOpponent = Object.values(players).find(
         player => player.positionX === body.x && player.positionZ === body.y
@@ -391,6 +415,13 @@ function updatePlayer(
 
           io.emit('player_died', hitOpponent.id);
         }
+
+        explosions.push({
+          id: uuid(),
+          positionX: point.x,
+          positionZ: point.y,
+          fade: 1,
+        });
       }
     }
   }
